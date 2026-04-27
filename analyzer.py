@@ -205,36 +205,39 @@ class FaceAnalyzer:
         analysis = {}
 
         # ---------- Soft classification ----------
-        # Face shape: designed to reduce over-selection of square/oval while allowing rare labels to appear.
+        # Face shape: tuned to reduce false Square predictions.
+        # Square should require a clearly short/wide face AND a relatively broad jaw.
         face_raw = {
-            "長臉 (Long)": 1.15 * self.sigmoid_score(ratio_hw, 1.44, 0.055, "high"),
-            "圓臉 (Round)": 1.10 * self.sigmoid_score(ratio_hw, 1.34, 0.06, "low") * self.gaussian_score(ratio_jc, 0.90, 0.12),
-            "方臉 (Square)": 0.95 * self.sigmoid_score(ratio_hw, 1.38, 0.07, "low") * self.sigmoid_score(ratio_jc, 0.95, 0.06, "high"),
-            "心形臉 (Heart)": 1.25 * self.sigmoid_score(ratio_fc - ratio_jc, 0.08, 0.04, "high") * self.sigmoid_score(ratio_jf, 0.90, 0.06, "low"),
-            "橢圓臉 (Oval)": 0.95 * self.gaussian_score(ratio_hw, 1.42, 0.11) * self.gaussian_score(ratio_jc, 0.90, 0.14),
+            "長臉 (Long)": 1.20 * self.sigmoid_score(ratio_hw, 1.43, 0.060, "high"),
+            "圓臉 (Round)": 1.18 * self.sigmoid_score(ratio_hw, 1.34, 0.065, "low") * self.gaussian_score(ratio_jc, 0.88, 0.13),
+            "方臉 (Square)": 0.58 * self.sigmoid_score(ratio_hw, 1.30, 0.045, "low") * self.sigmoid_score(ratio_jc, 1.03, 0.045, "high"),
+            "心形臉 (Heart)": 1.28 * self.sigmoid_score(ratio_fc - ratio_jc, 0.075, 0.045, "high") * self.sigmoid_score(ratio_jf, 0.92, 0.065, "low"),
+            "橢圓臉 (Oval)": 1.10 * self.gaussian_score(ratio_hw, 1.43, 0.13) * self.gaussian_score(ratio_jc, 0.90, 0.16),
         }
         face_probs = self.normalize_scores(face_raw)
         analysis["face_shape"] = self.label_from_probs(face_probs)
         analysis["face_shape_probs"] = face_probs
 
-        # Eye shape: tilt categories can win even if eye_ratio is almond-like.
+        # Eye shape: tuned to reduce false Upturned predictions.
+        # Upturned now needs a stronger positive tilt; mild tilt is absorbed by Almond.
         eye_raw = {
-            "上揚眼 (Upturned)": 1.20 * self.sigmoid_score(avg_eye_up_angle, 4.5, 1.8, "high"),
-            "下垂眼 (Downturned)": 1.10 * self.sigmoid_score(avg_eye_up_angle, -4.5, 1.8, "low"),
-            "圓眼 (Round)": 1.05 * self.sigmoid_score(eye_ratio, 2.10, 0.18, "low"),
-            "細長眼 (Slender)": 1.00 * self.sigmoid_score(eye_ratio, 2.95, 0.22, "high"),
-            "杏仁眼 (Almond)": 0.90 * self.gaussian_score(eye_ratio, 2.55, 0.35) * self.gaussian_score(avg_eye_up_angle, 0.0, 5.5),
+            "上揚眼 (Upturned)": 0.72 * self.sigmoid_score(avg_eye_up_angle, 7.0, 1.5, "high"),
+            "下垂眼 (Downturned)": 1.00 * self.sigmoid_score(avg_eye_up_angle, -6.0, 1.7, "low"),
+            "圓眼 (Round)": 1.10 * self.sigmoid_score(eye_ratio, 2.05, 0.20, "low"),
+            "細長眼 (Slender)": 1.02 * self.sigmoid_score(eye_ratio, 2.95, 0.24, "high"),
+            "杏仁眼 (Almond)": 1.25 * self.gaussian_score(eye_ratio, 2.55, 0.42) * self.gaussian_score(avg_eye_up_angle, 0.0, 7.5),
         }
         eye_probs = self.normalize_scores(eye_raw)
         analysis["eye_shape"] = self.label_from_probs(eye_probs)
         analysis["eye_shape_probs"] = eye_probs
 
-        # Eyebrow shape: arch is based on peak height; tilt based on tail/head slope.
+        # Eyebrow shape: tuned to reduce false Arched predictions.
+        # Arched now needs a clearer peak; mild curvature is treated as Straight/tilted brow.
         brow_raw = {
-            "拱眉 (Arched)": 1.10 * self.sigmoid_score(avg_arch_ratio, 0.16, 0.035, "high"),
-            "上揚眉 (Upturned)": 1.05 * self.sigmoid_score(avg_brow_tilt, 0.075, 0.025, "high"),
-            "下垂眉 (Downturned)": 1.05 * self.sigmoid_score(avg_brow_tilt, -0.055, 0.025, "low"),
-            "平眉 (Straight)": 0.95 * self.gaussian_score(avg_brow_tilt, 0.0, 0.07) * self.sigmoid_score(avg_arch_ratio, 0.18, 0.04, "low"),
+            "拱眉 (Arched)": 0.68 * self.sigmoid_score(avg_arch_ratio, 0.23, 0.035, "high"),
+            "上揚眉 (Upturned)": 1.00 * self.sigmoid_score(avg_brow_tilt, 0.085, 0.028, "high") * self.sigmoid_score(avg_arch_ratio, 0.26, 0.05, "low"),
+            "下垂眉 (Downturned)": 1.00 * self.sigmoid_score(avg_brow_tilt, -0.070, 0.028, "low") * self.sigmoid_score(avg_arch_ratio, 0.26, 0.05, "low"),
+            "平眉 (Straight)": 1.35 * self.gaussian_score(avg_brow_tilt, 0.0, 0.085) * self.sigmoid_score(avg_arch_ratio, 0.22, 0.045, "low"),
         }
         brow_probs = self.normalize_scores(brow_raw)
         analysis["eyebrow_shape"] = self.label_from_probs(brow_probs)
