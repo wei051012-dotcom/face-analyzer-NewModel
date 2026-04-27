@@ -89,7 +89,7 @@ class FaceAnalyzer:
             "matrixes": result.facial_transformation_matrixes,
         }
 
-    def analyze(self, image):
+    def analyze(self, image, tuning=None):
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
         results = self.detector.detect(mp_image)
@@ -204,40 +204,82 @@ class FaceAnalyzer:
 
         analysis = {}
 
+        # ---------- Tuning parameters from Streamlit UI ----------
+        # Bias: lower = harder to be selected; higher = easier to be selected.
+        # Center: the decision midpoint of a smooth threshold.
+        tuning = tuning or {}
+        face_square_bias = tuning.get("face_square_bias", 0.75)
+        face_round_bias = tuning.get("face_round_bias", 1.10)
+        face_long_bias = tuning.get("face_long_bias", 1.15)
+        face_heart_bias = tuning.get("face_heart_bias", 1.25)
+        face_oval_bias = tuning.get("face_oval_bias", 0.95)
+        face_square_hw_center = tuning.get("face_square_hw_center", 1.32)
+        face_square_jc_center = tuning.get("face_square_jc_center", 1.02)
+
+        eye_up_bias = tuning.get("eye_up_bias", 0.85)
+        eye_down_bias = tuning.get("eye_down_bias", 1.10)
+        eye_round_bias = tuning.get("eye_round_bias", 1.05)
+        eye_slender_bias = tuning.get("eye_slender_bias", 1.00)
+        eye_almond_bias = tuning.get("eye_almond_bias", 0.90)
+        eye_up_angle_center = tuning.get("eye_up_angle_center", 6.5)
+        eye_down_angle_center = tuning.get("eye_down_angle_center", -4.5)
+        eye_round_ratio_center = tuning.get("eye_round_ratio_center", 2.10)
+
+        brow_arch_bias = tuning.get("brow_arch_bias", 0.75)
+        brow_up_bias = tuning.get("brow_up_bias", 1.05)
+        brow_down_bias = tuning.get("brow_down_bias", 1.05)
+        brow_straight_bias = tuning.get("brow_straight_bias", 1.05)
+        brow_arch_center = tuning.get("brow_arch_center", 0.20)
+        brow_up_center = tuning.get("brow_up_center", 0.075)
+        brow_down_center = tuning.get("brow_down_center", -0.055)
+
+        nose_wide_bias = tuning.get("nose_wide_bias", 1.10)
+        nose_narrow_bias = tuning.get("nose_narrow_bias", 1.15)
+        nose_high_bias = tuning.get("nose_high_bias", 1.15)
+        nose_low_bias = tuning.get("nose_low_bias", 1.05)
+        nose_medium_bias = tuning.get("nose_medium_bias", 0.85)
+        nose_narrow_center = tuning.get("nose_narrow_center", 0.235)
+        nose_high_center = tuning.get("nose_high_center", 0.335)
+
+        lip_upper_bias = tuning.get("lip_upper_bias", 1.05)
+        lip_lower_bias = tuning.get("lip_lower_bias", 1.05)
+        lip_thick_bias = tuning.get("lip_thick_bias", 1.10)
+        lip_thin_bias = tuning.get("lip_thin_bias", 1.05)
+        lip_medium_bias = tuning.get("lip_medium_bias", 0.90)
+        lip_thick_center = tuning.get("lip_thick_center", 0.108)
+        lip_thin_center = tuning.get("lip_thin_center", 0.073)
+
         # ---------- Soft classification ----------
-        # Face shape: tuned to reduce false Square predictions.
-        # Square should require a clearly short/wide face AND a relatively broad jaw.
+        # Face shape: designed to reduce over-selection of square/oval while allowing rare labels to appear.
         face_raw = {
-            "長臉 (Long)": 1.20 * self.sigmoid_score(ratio_hw, 1.43, 0.060, "high"),
-            "圓臉 (Round)": 1.18 * self.sigmoid_score(ratio_hw, 1.34, 0.065, "low") * self.gaussian_score(ratio_jc, 0.88, 0.13),
-            "方臉 (Square)": 0.58 * self.sigmoid_score(ratio_hw, 1.30, 0.045, "low") * self.sigmoid_score(ratio_jc, 1.03, 0.045, "high"),
-            "心形臉 (Heart)": 1.28 * self.sigmoid_score(ratio_fc - ratio_jc, 0.075, 0.045, "high") * self.sigmoid_score(ratio_jf, 0.92, 0.065, "low"),
-            "橢圓臉 (Oval)": 1.10 * self.gaussian_score(ratio_hw, 1.43, 0.13) * self.gaussian_score(ratio_jc, 0.90, 0.16),
+            "長臉 (Long)": face_long_bias * self.sigmoid_score(ratio_hw, 1.44, 0.055, "high"),
+            "圓臉 (Round)": face_round_bias * self.sigmoid_score(ratio_hw, 1.34, 0.06, "low") * self.gaussian_score(ratio_jc, 0.90, 0.12),
+            "方臉 (Square)": face_square_bias * self.sigmoid_score(ratio_hw, face_square_hw_center, 0.06, "low") * self.sigmoid_score(ratio_jc, face_square_jc_center, 0.055, "high"),
+            "心形臉 (Heart)": face_heart_bias * self.sigmoid_score(ratio_fc - ratio_jc, 0.08, 0.04, "high") * self.sigmoid_score(ratio_jf, 0.90, 0.06, "low"),
+            "橢圓臉 (Oval)": face_oval_bias * self.gaussian_score(ratio_hw, 1.42, 0.11) * self.gaussian_score(ratio_jc, 0.90, 0.14),
         }
         face_probs = self.normalize_scores(face_raw)
         analysis["face_shape"] = self.label_from_probs(face_probs)
         analysis["face_shape_probs"] = face_probs
 
-        # Eye shape: tuned to reduce false Upturned predictions.
-        # Upturned now needs a stronger positive tilt; mild tilt is absorbed by Almond.
+        # Eye shape: tilt categories can win even if eye_ratio is almond-like.
         eye_raw = {
-            "上揚眼 (Upturned)": 0.72 * self.sigmoid_score(avg_eye_up_angle, 7.0, 1.5, "high"),
-            "下垂眼 (Downturned)": 1.00 * self.sigmoid_score(avg_eye_up_angle, -6.0, 1.7, "low"),
-            "圓眼 (Round)": 1.10 * self.sigmoid_score(eye_ratio, 2.05, 0.20, "low"),
-            "細長眼 (Slender)": 1.02 * self.sigmoid_score(eye_ratio, 2.95, 0.24, "high"),
-            "杏仁眼 (Almond)": 1.25 * self.gaussian_score(eye_ratio, 2.55, 0.42) * self.gaussian_score(avg_eye_up_angle, 0.0, 7.5),
+            "上揚眼 (Upturned)": eye_up_bias * self.sigmoid_score(avg_eye_up_angle, eye_up_angle_center, 1.8, "high"),
+            "下垂眼 (Downturned)": eye_down_bias * self.sigmoid_score(avg_eye_up_angle, eye_down_angle_center, 1.8, "low"),
+            "圓眼 (Round)": eye_round_bias * self.sigmoid_score(eye_ratio, eye_round_ratio_center, 0.18, "low"),
+            "細長眼 (Slender)": eye_slender_bias * self.sigmoid_score(eye_ratio, 2.95, 0.22, "high"),
+            "杏仁眼 (Almond)": eye_almond_bias * self.gaussian_score(eye_ratio, 2.55, 0.35) * self.gaussian_score(avg_eye_up_angle, 0.0, 5.5),
         }
         eye_probs = self.normalize_scores(eye_raw)
         analysis["eye_shape"] = self.label_from_probs(eye_probs)
         analysis["eye_shape_probs"] = eye_probs
 
-        # Eyebrow shape: tuned to reduce false Arched predictions.
-        # Arched now needs a clearer peak; mild curvature is treated as Straight/tilted brow.
+        # Eyebrow shape: arch is based on peak height; tilt based on tail/head slope.
         brow_raw = {
-            "拱眉 (Arched)": 0.68 * self.sigmoid_score(avg_arch_ratio, 0.23, 0.035, "high"),
-            "上揚眉 (Upturned)": 1.00 * self.sigmoid_score(avg_brow_tilt, 0.085, 0.028, "high") * self.sigmoid_score(avg_arch_ratio, 0.26, 0.05, "low"),
-            "下垂眉 (Downturned)": 1.00 * self.sigmoid_score(avg_brow_tilt, -0.070, 0.028, "low") * self.sigmoid_score(avg_arch_ratio, 0.26, 0.05, "low"),
-            "平眉 (Straight)": 1.35 * self.gaussian_score(avg_brow_tilt, 0.0, 0.085) * self.sigmoid_score(avg_arch_ratio, 0.22, 0.045, "low"),
+            "拱眉 (Arched)": brow_arch_bias * self.sigmoid_score(avg_arch_ratio, brow_arch_center, 0.035, "high"),
+            "上揚眉 (Upturned)": brow_up_bias * self.sigmoid_score(avg_brow_tilt, brow_up_center, 0.025, "high"),
+            "下垂眉 (Downturned)": brow_down_bias * self.sigmoid_score(avg_brow_tilt, brow_down_center, 0.025, "low"),
+            "平眉 (Straight)": brow_straight_bias * self.gaussian_score(avg_brow_tilt, 0.0, 0.07) * self.sigmoid_score(avg_arch_ratio, 0.18, 0.04, "low"),
         }
         brow_probs = self.normalize_scores(brow_raw)
         analysis["eyebrow_shape"] = self.label_from_probs(brow_probs)
@@ -245,22 +287,22 @@ class FaceAnalyzer:
 
         # Nose shape: high/low bridge from bridge length proxy; wide/narrow from alar width.
         nose_raw = {
-            "寬鼻 (Wide)": 1.10 * self.sigmoid_score(nose_face_ratio, 0.285, 0.025, "high"),
-            "窄鼻 (Narrow)": 1.15 * self.sigmoid_score(nose_face_ratio, 0.235, 0.025, "low"),
-            "高鼻樑 (High bridge)": 1.15 * self.sigmoid_score(nose_len_face_ratio, 0.335, 0.025, "high") * self.sigmoid_score(bridge_ratio, 1.02, 0.10, "high"),
-            "低鼻樑 (Low bridge)": 1.05 * self.sigmoid_score(nose_len_face_ratio, 0.285, 0.025, "low") * self.sigmoid_score(bridge_ratio, 0.88, 0.10, "low"),
-            "中等鼻 (Medium)": 0.85 * self.gaussian_score(nose_face_ratio, 0.26, 0.04) * self.gaussian_score(nose_len_face_ratio, 0.31, 0.045),
+            "寬鼻 (Wide)": nose_wide_bias * self.sigmoid_score(nose_face_ratio, 0.285, 0.025, "high"),
+            "窄鼻 (Narrow)": nose_narrow_bias * self.sigmoid_score(nose_face_ratio, nose_narrow_center, 0.025, "low"),
+            "高鼻樑 (High bridge)": nose_high_bias * self.sigmoid_score(nose_len_face_ratio, nose_high_center, 0.025, "high") * self.sigmoid_score(bridge_ratio, 1.02, 0.10, "high"),
+            "低鼻樑 (Low bridge)": nose_low_bias * self.sigmoid_score(nose_len_face_ratio, 0.285, 0.025, "low") * self.sigmoid_score(bridge_ratio, 0.88, 0.10, "low"),
+            "中等鼻 (Medium)": nose_medium_bias * self.gaussian_score(nose_face_ratio, 0.26, 0.04) * self.gaussian_score(nose_len_face_ratio, 0.31, 0.045),
         }
         nose_probs = self.normalize_scores(nose_raw)
         analysis["nose_shape"] = self.label_from_probs(nose_probs)
         analysis["nose_shape_probs"] = nose_probs
 
         lip_raw = {
-            "上唇較厚 (Thicker upper lip)": 1.05 * self.sigmoid_score(upper_lip_share, 0.54, 0.035, "high"),
-            "下唇較厚 (Thicker lower lip)": 1.05 * self.sigmoid_score(upper_lip_share, 0.43, 0.035, "low"),
-            "厚唇 (Thick)": 1.10 * self.sigmoid_score(lip_face_ratio, 0.108, 0.012, "high"),
-            "薄唇 (Thin)": 1.05 * self.sigmoid_score(lip_face_ratio, 0.073, 0.010, "low"),
-            "中等唇 (Medium)": 0.90 * self.gaussian_score(lip_face_ratio, 0.09, 0.018) * self.gaussian_score(upper_lip_share, 0.47, 0.08),
+            "上唇較厚 (Thicker upper lip)": lip_upper_bias * self.sigmoid_score(upper_lip_share, 0.54, 0.035, "high"),
+            "下唇較厚 (Thicker lower lip)": lip_lower_bias * self.sigmoid_score(upper_lip_share, 0.43, 0.035, "low"),
+            "厚唇 (Thick)": lip_thick_bias * self.sigmoid_score(lip_face_ratio, lip_thick_center, 0.012, "high"),
+            "薄唇 (Thin)": lip_thin_bias * self.sigmoid_score(lip_face_ratio, lip_thin_center, 0.010, "low"),
+            "中等唇 (Medium)": lip_medium_bias * self.gaussian_score(lip_face_ratio, 0.09, 0.018) * self.gaussian_score(upper_lip_share, 0.47, 0.08),
         }
         lip_probs = self.normalize_scores(lip_raw)
         analysis["lips"] = self.label_from_probs(lip_probs)
