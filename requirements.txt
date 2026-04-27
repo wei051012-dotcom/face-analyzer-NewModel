@@ -1,7 +1,5 @@
 streamlit
-mediapipe==0.10.14
-opencv-python-headless==4.10.0.84
+opencv-python
+mediapipe
 numpy
 Pillow
-pandas
-altair
