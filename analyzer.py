@@ -114,11 +114,6 @@ class FaceAnalyzer:
         cheek_left = self.get_point(landmarks, 50, w, h)
         cheek_right = self.get_point(landmarks, 280, w, h)
 
-        # Lower-face / chin-width anchors. These are used to prevent many
-        # ordinary oval or round faces from being absorbed into Square.
-        chin_left = self.get_point(landmarks, 172, w, h)
-        chin_right = self.get_point(landmarks, 397, w, h)
-
         left_eye_inner = self.get_point(landmarks, 133, w, h)
         left_eye_outer = self.get_point(landmarks, 33, w, h)
         left_eye_top = self.get_point(landmarks, 159, w, h)
@@ -154,14 +149,11 @@ class FaceAnalyzer:
         jaw_width = self.dist(jaw_right, jaw_left)
         forehead_width = self.dist(forehead_right, forehead_left)
         cheek_width = self.dist(cheek_right, cheek_left)
-        chin_width = self.dist(chin_right, chin_left)
 
         ratio_hw = self.safe_div(face_height, face_width)
         ratio_jc = self.safe_div(jaw_width, cheek_width)
         ratio_fc = self.safe_div(forehead_width, cheek_width)
         ratio_jf = self.safe_div(jaw_width, forehead_width)
-        ratio_chin_cheek = self.safe_div(chin_width, cheek_width)
-        ratio_chin_jaw = self.safe_div(chin_width, jaw_width)
 
         left_eye_width = self.dist(left_eye_outer, left_eye_inner)
         left_eye_height = self.dist(left_eye_bottom, left_eye_top)
@@ -216,16 +208,13 @@ class FaceAnalyzer:
         # Bias: lower = harder to be selected; higher = easier to be selected.
         # Center: the decision midpoint of a smooth threshold.
         tuning = tuning or {}
-        # Face-shape parameters. Square intentionally has stricter defaults
-        # because jaw landmarks can look artificially wide in many photos.
-        face_square_bias = tuning.get("face_square_bias", 0.55)
-        face_round_bias = tuning.get("face_round_bias", 1.18)
+        face_square_bias = tuning.get("face_square_bias", 0.75)
+        face_round_bias = tuning.get("face_round_bias", 1.10)
         face_long_bias = tuning.get("face_long_bias", 1.15)
         face_heart_bias = tuning.get("face_heart_bias", 1.25)
-        face_oval_bias = tuning.get("face_oval_bias", 1.12)
-        face_square_hw_center = tuning.get("face_square_hw_center", 1.24)
+        face_oval_bias = tuning.get("face_oval_bias", 0.95)
+        face_square_hw_center = tuning.get("face_square_hw_center", 1.32)
         face_square_jc_center = tuning.get("face_square_jc_center", 1.02)
-        face_square_chin_center = tuning.get("face_square_chin_center", 0.74)
 
         eye_up_bias = tuning.get("eye_up_bias", 0.85)
         eye_down_bias = tuning.get("eye_down_bias", 1.10)
@@ -249,58 +238,25 @@ class FaceAnalyzer:
         nose_high_bias = tuning.get("nose_high_bias", 1.15)
         nose_low_bias = tuning.get("nose_low_bias", 1.05)
         nose_medium_bias = tuning.get("nose_medium_bias", 0.85)
-        nose_wide_center = tuning.get("nose_wide_center", 0.285)
         nose_narrow_center = tuning.get("nose_narrow_center", 0.235)
         nose_high_center = tuning.get("nose_high_center", 0.335)
-        nose_low_center = tuning.get("nose_low_center", 0.285)
-        nose_bridge_high_center = tuning.get("nose_bridge_high_center", 1.02)
-        nose_bridge_low_center = tuning.get("nose_bridge_low_center", 0.88)
-        nose_medium_width_center = tuning.get("nose_medium_width_center", 0.26)
-        nose_medium_length_center = tuning.get("nose_medium_length_center", 0.31)
 
         lip_upper_bias = tuning.get("lip_upper_bias", 1.05)
         lip_lower_bias = tuning.get("lip_lower_bias", 1.05)
         lip_thick_bias = tuning.get("lip_thick_bias", 1.10)
         lip_thin_bias = tuning.get("lip_thin_bias", 1.05)
         lip_medium_bias = tuning.get("lip_medium_bias", 0.90)
-        lip_upper_share_center = tuning.get("lip_upper_share_center", 0.54)
-        lip_lower_share_center = tuning.get("lip_lower_share_center", 0.43)
         lip_thick_center = tuning.get("lip_thick_center", 0.108)
         lip_thin_center = tuning.get("lip_thin_center", 0.073)
-        lip_medium_height_center = tuning.get("lip_medium_height_center", 0.09)
-        lip_medium_upper_share_center = tuning.get("lip_medium_upper_share_center", 0.47)
 
         # ---------- Soft classification ----------
-        # Face shape: score-based classifier with extra lower-face geometry.
-        # Key fix: Square now requires THREE signals at the same time:
-        #   1) relatively short/wide face,
-        #   2) jaw close to cheekbone width,
-        #   3) chin/lower jaw not strongly tapered.
-        # This reduces the common failure mode: “slightly wide jaw => Square”.
-        square_compact = self.sigmoid_score(ratio_hw, face_square_hw_center, 0.045, "low")
-        square_jaw = self.sigmoid_score(ratio_jc, face_square_jc_center, 0.045, "high")
-        square_chin = self.sigmoid_score(ratio_chin_cheek, face_square_chin_center, 0.04, "high")
-        square_balance = self.gaussian_score(ratio_fc, 0.92, 0.18)
-
+        # Face shape: designed to reduce over-selection of square/oval while allowing rare labels to appear.
         face_raw = {
-            "長臉 (Long)": face_long_bias * self.sigmoid_score(ratio_hw, 1.47, 0.055, "high"),
-            "圓臉 (Round)": face_round_bias
-                * self.sigmoid_score(ratio_hw, 1.31, 0.06, "low")
-                * self.gaussian_score(ratio_jc, 0.88, 0.13)
-                * self.sigmoid_score(ratio_chin_cheek, 0.77, 0.06, "low"),
-            "方臉 (Square)": face_square_bias
-                * square_compact
-                * square_jaw
-                * square_chin
-                * square_balance,
-            "心形臉 (Heart)": face_heart_bias
-                * self.sigmoid_score(ratio_fc - ratio_jc, 0.08, 0.04, "high")
-                * self.sigmoid_score(ratio_chin_cheek, 0.70, 0.055, "low")
-                * self.sigmoid_score(ratio_jf, 0.92, 0.06, "low"),
-            "橢圓臉 (Oval)": face_oval_bias
-                * self.gaussian_score(ratio_hw, 1.40, 0.13)
-                * self.gaussian_score(ratio_jc, 0.91, 0.16)
-                * self.gaussian_score(ratio_chin_cheek, 0.72, 0.12),
+            "長臉 (Long)": face_long_bias * self.sigmoid_score(ratio_hw, 1.44, 0.055, "high"),
+            "圓臉 (Round)": face_round_bias * self.sigmoid_score(ratio_hw, 1.34, 0.06, "low") * self.gaussian_score(ratio_jc, 0.90, 0.12),
+            "方臉 (Square)": face_square_bias * self.sigmoid_score(ratio_hw, face_square_hw_center, 0.06, "low") * self.sigmoid_score(ratio_jc, face_square_jc_center, 0.055, "high"),
+            "心形臉 (Heart)": face_heart_bias * self.sigmoid_score(ratio_fc - ratio_jc, 0.08, 0.04, "high") * self.sigmoid_score(ratio_jf, 0.90, 0.06, "low"),
+            "橢圓臉 (Oval)": face_oval_bias * self.gaussian_score(ratio_hw, 1.42, 0.11) * self.gaussian_score(ratio_jc, 0.90, 0.14),
         }
         face_probs = self.normalize_scores(face_raw)
         analysis["face_shape"] = self.label_from_probs(face_probs)
@@ -331,22 +287,22 @@ class FaceAnalyzer:
 
         # Nose shape: high/low bridge from bridge length proxy; wide/narrow from alar width.
         nose_raw = {
-            "寬鼻 (Wide)": nose_wide_bias * self.sigmoid_score(nose_face_ratio, nose_wide_center, 0.025, "high"),
+            "寬鼻 (Wide)": nose_wide_bias * self.sigmoid_score(nose_face_ratio, 0.285, 0.025, "high"),
             "窄鼻 (Narrow)": nose_narrow_bias * self.sigmoid_score(nose_face_ratio, nose_narrow_center, 0.025, "low"),
-            "高鼻樑 (High bridge)": nose_high_bias * self.sigmoid_score(nose_len_face_ratio, nose_high_center, 0.025, "high") * self.sigmoid_score(bridge_ratio, nose_bridge_high_center, 0.10, "high"),
-            "低鼻樑 (Low bridge)": nose_low_bias * self.sigmoid_score(nose_len_face_ratio, nose_low_center, 0.025, "low") * self.sigmoid_score(bridge_ratio, nose_bridge_low_center, 0.10, "low"),
-            "中等鼻 (Medium)": nose_medium_bias * self.gaussian_score(nose_face_ratio, nose_medium_width_center, 0.04) * self.gaussian_score(nose_len_face_ratio, nose_medium_length_center, 0.045),
+            "高鼻樑 (High bridge)": nose_high_bias * self.sigmoid_score(nose_len_face_ratio, nose_high_center, 0.025, "high") * self.sigmoid_score(bridge_ratio, 1.02, 0.10, "high"),
+            "低鼻樑 (Low bridge)": nose_low_bias * self.sigmoid_score(nose_len_face_ratio, 0.285, 0.025, "low") * self.sigmoid_score(bridge_ratio, 0.88, 0.10, "low"),
+            "中等鼻 (Medium)": nose_medium_bias * self.gaussian_score(nose_face_ratio, 0.26, 0.04) * self.gaussian_score(nose_len_face_ratio, 0.31, 0.045),
         }
         nose_probs = self.normalize_scores(nose_raw)
         analysis["nose_shape"] = self.label_from_probs(nose_probs)
         analysis["nose_shape_probs"] = nose_probs
 
         lip_raw = {
-            "上唇較厚 (Thicker upper lip)": lip_upper_bias * self.sigmoid_score(upper_lip_share, lip_upper_share_center, 0.035, "high"),
-            "下唇較厚 (Thicker lower lip)": lip_lower_bias * self.sigmoid_score(upper_lip_share, lip_lower_share_center, 0.035, "low"),
+            "上唇較厚 (Thicker upper lip)": lip_upper_bias * self.sigmoid_score(upper_lip_share, 0.54, 0.035, "high"),
+            "下唇較厚 (Thicker lower lip)": lip_lower_bias * self.sigmoid_score(upper_lip_share, 0.43, 0.035, "low"),
             "厚唇 (Thick)": lip_thick_bias * self.sigmoid_score(lip_face_ratio, lip_thick_center, 0.012, "high"),
             "薄唇 (Thin)": lip_thin_bias * self.sigmoid_score(lip_face_ratio, lip_thin_center, 0.010, "low"),
-            "中等唇 (Medium)": lip_medium_bias * self.gaussian_score(lip_face_ratio, lip_medium_height_center, 0.018) * self.gaussian_score(upper_lip_share, lip_medium_upper_share_center, 0.08),
+            "中等唇 (Medium)": lip_medium_bias * self.gaussian_score(lip_face_ratio, 0.09, 0.018) * self.gaussian_score(upper_lip_share, 0.47, 0.08),
         }
         lip_probs = self.normalize_scores(lip_raw)
         analysis["lips"] = self.label_from_probs(lip_probs)
@@ -362,8 +318,6 @@ class FaceAnalyzer:
             "face_height_width": round(ratio_hw, 3),
             "jaw_cheek_ratio": round(ratio_jc, 3),
             "forehead_cheek_ratio": round(ratio_fc, 3),
-            "chin_cheek_ratio": round(ratio_chin_cheek, 3),
-            "chin_jaw_ratio": round(ratio_chin_jaw, 3),
             "eye_width_height": round(eye_ratio, 3),
             "eye_up_angle_deg": round(avg_eye_up_angle, 2),
             "brow_tilt_ratio": round(avg_brow_tilt, 3),

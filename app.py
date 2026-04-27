@@ -48,26 +48,16 @@ DEFAULT_TUNING = {
     "nose_high_bias": 1.15,
     "nose_low_bias": 1.05,
     "nose_medium_bias": 0.85,
-    "nose_wide_center": 0.285,
     "nose_narrow_center": 0.235,
     "nose_high_center": 0.335,
-    "nose_low_center": 0.285,
-    "nose_bridge_high_center": 1.02,
-    "nose_bridge_low_center": 0.88,
-    "nose_medium_width_center": 0.26,
-    "nose_medium_length_center": 0.31,
 
     "lip_upper_bias": 1.05,
     "lip_lower_bias": 1.05,
     "lip_thick_bias": 1.10,
     "lip_thin_bias": 1.05,
     "lip_medium_bias": 0.90,
-    "lip_upper_share_center": 0.54,
-    "lip_lower_share_center": 0.43,
     "lip_thick_center": 0.108,
     "lip_thin_center": 0.073,
-    "lip_medium_height_center": 0.09,
-    "lip_medium_upper_share_center": 0.47,
 }
 
 if "history" not in st.session_state:
@@ -134,35 +124,24 @@ with st.sidebar:
         slider("上揚眉：眉尾上揚門檻", "brow_up_center", 0.02, 0.16, 0.005)
         slider("下垂眉：眉尾下垂門檻", "brow_down_center", -0.16, -0.02, 0.005)
 
-    st.subheader("鼻型")
-    slider("寬鼻吸附力", "nose_wide_bias", 0.20, 2.00, 0.05)
-    slider("窄鼻吸附力", "nose_narrow_bias", 0.20, 2.00, 0.05)
-    slider("高鼻樑吸附力", "nose_high_bias", 0.20, 2.00, 0.05)
-    slider("低鼻樑吸附力", "nose_low_bias", 0.20, 2.00, 0.05)
-    slider("中等鼻吸附力", "nose_medium_bias", 0.20, 2.00, 0.05)
     if show_advanced:
-        slider("寬鼻：鼻寬/臉寬門檻", "nose_wide_center", 0.24, 0.35, 0.005)
+        st.subheader("鼻型")
+        slider("寬鼻吸附力", "nose_wide_bias", 0.20, 2.00, 0.05)
+        slider("窄鼻吸附力", "nose_narrow_bias", 0.20, 2.00, 0.05)
+        slider("高鼻樑吸附力", "nose_high_bias", 0.20, 2.00, 0.05)
+        slider("低鼻樑吸附力", "nose_low_bias", 0.20, 2.00, 0.05)
+        slider("中等鼻吸附力", "nose_medium_bias", 0.20, 2.00, 0.05)
         slider("窄鼻：鼻寬/臉寬門檻", "nose_narrow_center", 0.18, 0.30, 0.005)
         slider("高鼻樑：鼻長/臉高門檻", "nose_high_center", 0.25, 0.42, 0.005)
-        slider("低鼻樑：鼻長/臉高門檻", "nose_low_center", 0.22, 0.36, 0.005)
-        slider("高鼻樑：鼻長/眼距門檻", "nose_bridge_high_center", 0.80, 1.30, 0.01)
-        slider("低鼻樑：鼻長/眼距門檻", "nose_bridge_low_center", 0.65, 1.15, 0.01)
-        slider("中等鼻：鼻寬中心", "nose_medium_width_center", 0.21, 0.32, 0.005)
-        slider("中等鼻：鼻長中心", "nose_medium_length_center", 0.24, 0.38, 0.005)
 
-    st.subheader("嘴唇")
-    slider("上唇較厚吸附力", "lip_upper_bias", 0.20, 2.00, 0.05)
-    slider("下唇較厚吸附力", "lip_lower_bias", 0.20, 2.00, 0.05)
-    slider("厚唇吸附力", "lip_thick_bias", 0.20, 2.00, 0.05)
-    slider("薄唇吸附力", "lip_thin_bias", 0.20, 2.00, 0.05)
-    slider("中等唇吸附力", "lip_medium_bias", 0.20, 2.00, 0.05)
-    if show_advanced:
-        slider("上唇較厚：上唇比例門檻", "lip_upper_share_center", 0.46, 0.65, 0.005)
-        slider("下唇較厚：上唇比例門檻", "lip_lower_share_center", 0.32, 0.50, 0.005)
+        st.subheader("嘴唇")
+        slider("上唇較厚吸附力", "lip_upper_bias", 0.20, 2.00, 0.05)
+        slider("下唇較厚吸附力", "lip_lower_bias", 0.20, 2.00, 0.05)
+        slider("厚唇吸附力", "lip_thick_bias", 0.20, 2.00, 0.05)
+        slider("薄唇吸附力", "lip_thin_bias", 0.20, 2.00, 0.05)
+        slider("中等唇吸附力", "lip_medium_bias", 0.20, 2.00, 0.05)
         slider("厚唇：唇高/臉高門檻", "lip_thick_center", 0.07, 0.15, 0.002)
         slider("薄唇：唇高/臉高門檻", "lip_thin_center", 0.04, 0.11, 0.002)
-        slider("中等唇：唇高中心", "lip_medium_height_center", 0.06, 0.13, 0.002)
-        slider("中等唇：上下唇比例中心", "lip_medium_upper_share_center", 0.38, 0.56, 0.005)
 
     with st.expander("目前參數 JSON"):
         st.json(st.session_state.tuning)
